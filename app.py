@@ -3,11 +3,11 @@ from flask_socketio import SocketIO, send, emit
 import socket
 import geocoder
 import datetime
+import pytz
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-# Store users with their info
 users = {}
 
 @app.route('/')
@@ -17,25 +17,27 @@ def index():
 @socketio.on('message')
 def handle_message(msg):
     username = users.get(request.sid, {}).get('username', 'Anonymous')
-    country_flag = users.get(request.sid, {}).get('country_flag', '🌍')  # Default to globe flag
-    timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+    country_flag = users.get(request.sid, {}).get('country_flag', '🌍')
+    timestamp = datetime.datetime.now(pytz.timezone('US/Eastern')).strftime('%H:%M:%S')
 
     # Emit the message to all users
     emit('new_message', {'username': username, 'country_flag': country_flag, 'message': msg, 'timestamp': timestamp}, broadcast=True)
 
 @socketio.on('set_username')
-def handle_username(username):
-    # Get the user's IP address
+def handle_username(username, anonymous=False):
     user_ip = request.remote_addr
     g = geocoder.ip(user_ip)
     country = g.country
 
-    # Simple flag handling (you can replace with images of flags or a more detailed system)
-    country_flag = f"🇺🇸" if country == 'United States' else "🌍"  # Placeholder for actual flag logic
+    country_flag = f"🇺🇸" if country == 'United States' else "🌍"
 
-    # Store the user's username and country flag
-    users[request.sid] = {'username': username, 'country_flag': country_flag}
-    emit('username_set', {'username': username, 'country_flag': country_flag})
+    # If anonymous, don't store username
+    if anonymous:
+        users[request.sid] = {'username': 'Anonymous', 'country_flag': country_flag}
+    else:
+        users[request.sid] = {'username': username, 'country_flag': country_flag}
+    
+    emit('username_set', {'username': username if not anonymous else 'Anonymous', 'country_flag': country_flag})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
